@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WhisperX Studio — Local Video Transcriber & Speaker Recognition</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+      background-color: #0b0f19;
+      color: #f1f5f9;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif;
+    }
+    .drop-zone {
+      border: 2px dashed #334155;
+      transition: all 0.2s ease;
+    }
+    .drop-zone.dragover {
+      border-color: #38bdf8;
+      background-color: rgba(56, 189, 248, 0.08);
+    }
+    .segment-card {
+      transition: background-color 0.15s ease, border-color 0.15s ease;
+    }
+    .segment-card.active {
+      background-color: rgba(56, 189, 248, 0.14);
+      border-left: 4px solid #38bdf8;
+    }
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0f172a;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #475569;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+  <!-- Top Header -->
+  <header class="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-20">
+    <div class="max-w-7xl mx-auto px-6 py-3.5 flex flex-wrap items-center justify-between gap-4">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-lg bg-gradient-to-br from-sky-500 to-indigo-600 flex items-center justify-center font-bold text-white shadow-lg shadow-sky-500/20">
+          WX
+        </div>
+        <div>
+          <h1 class="text-lg font-bold tracking-tight text-white flex items-center gap-2">
+            WhisperX Studio
+            <span class="text-xs font-medium px-2 py-0.5 rounded-full bg-sky-500/15 text-sky-400 border border-sky-500/30">
+              100% Local & Unlimited
+            </span>
+          </h1>
+          <p class="text-xs text-slate-400">Millisecond Word Alignment + Neural Multi-Speaker Voice Recognition</p>
+        </div>
+      </div>
+
+      <div id="gpuBadge" class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-800/90 border border-slate-700 text-xs text-slate-300">
+        <span class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+        <span>Checking GPU...</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Workspace -->
+  <main class="max-w-7xl w-full mx-auto px-6 py-6 flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+    <!-- Left Column: Input, Settings & Media Player (5 cols) -->
+    <div class="lg:col-span-5 flex flex-col gap-5">
+
+      <!-- Upload / File Selection Card -->
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-xl">
+        <h2 class="text-sm font-semibold text-slate-200 uppercase tracking-wider mb-3">1. Select Video or Audio</h2>
+
+        <!-- Drag & Drop Zone -->
+        <div id="dropZone" class="drop-zone rounded-xl p-6 text-center cursor-pointer bg-slate-950/60 hover:bg-slate-950" onclick="document.getElementById('fileInput').click()">
+          <input type="file" id="fileInput" class="hidden" accept="video/*,audio/*,.mp4,.mkv,.mov,.avi,.webm,.mp3,.wav,.m4a,.flac,.ogg" />
+          <div class="w-11 h-11 rounded-full bg-slate-800/80 mx-auto mb-3 flex items-center justify-center text-sky-400">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+            </svg>
+          </div>
+          <p id="selectedFileLabel" class="text-sm font-medium text-slate-200">
+            Drop a video/audio file here or <span class="text-sky-400 underline">browse</span>
+          </p>
+          <p class="text-xs text-slate-400 mt-1">Supports MP4, MKV, MOV, WEBM, MP3, WAV, M4A (10+ mins or multi-hour)</p>
+        </div>
+
+        <!-- Or Paste Local Path (Instant for huge files) -->
+        <div class="mt-3">
+          <label class="block text-xs text-slate-400 mb-1">Or paste a local file path directly (instant for large multi-GB videos):</label>
+          <input id="localPathInput" type="text" placeholder="C:\Users\tpguz\Videos\interview.mp4"
+            class="w-full px-3 py-2 text-xs rounded-lg bg-slate-950 border border-slate-800 text-slate-200 placeholder-slate-600 focus:outline-none focus:border-sky-500" />
+        </div>
+
+        <!-- Settings Grid -->
+        <h2 class="text-sm font-semibold text-slate-200 uppercase tracking-wider mt-5 mb-3">2. Recognition Settings</h2>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">WhisperX Model</label>
+            <select id="modelSelect" class="w-full px-3 py-2 text-xs rounded-lg bg-slate-950 border border-slate-800 text-slate-200 focus:outline-none focus:border-sky-500">
+              <option value="large-v3" selected>large-v3 (Highest Accuracy)</option>
+              <option value="large-v2">large-v2 (High Accuracy)</option>
+              <option value="medium">medium (Faster, Less VRAM)</option>
+              <option value="small">small (Ultra Fast Draft)</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">Number of Speakers</label>
+            <select id="numSpeakersSelect" class="w-full px-3 py-2 text-xs rounded-lg bg-slate-950 border border-slate-800 text-slate-200 focus:outline-none focus:border-sky-500">
+              <option value="0" selected>Auto-Detect Voices</option>
+              <option value="2">Exactly 2 Speakers</option>
+              <option value="3">Exactly 3 Speakers</option>
+              <option value="4">Exactly 4 Speakers</option>
+              <option value="5">Exactly 5 Speakers</option>
+              <option value="6">Exactly 6 Speakers</option>
+              <option value="1">1 Speaker (No Split)</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">Language</label>
+            <select id="languageSelect" class="w-full px-3 py-2 text-xs rounded-lg bg-slate-950 border border-slate-800 text-slate-200 focus:outline-none focus:border-sky-500">
+              <option value="auto" selected>Auto-Detect</option>
+              <option value="en">English (en)</option>
+              <option value="es">Spanish (es)</option>
+              <option value="fr">French (fr)</option>
+              <option value="de">German (de)</option>
+              <option value="pt">Portuguese (pt)</option>
+              <option value="it">Italian (it)</option>
+              <option value="ja">Japanese (ja)</option>
+              <option value="zh">Chinese (zh)</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">Max Speakers (if Auto)</label>
+            <input id="maxSpeakersInput" type="number" min="2" max="15" value="8"
+              class="w-full px-3 py-2 text-xs rounded-lg bg-slate-950 border border-slate-800 text-slate-200 focus:outline-none focus:border-sky-500" />
+          </div>
+        </div>
+
+        <!-- Optional Advanced Pyannote Token -->
+        <details class="mt-3 text-xs text-slate-400">
+          <summary class="cursor-pointer hover:text-slate-300 select-none">Optional: Hugging Face Token (for Pyannote 3.1)</summary>
+          <div class="mt-2">
+            <p class="text-[11px] text-slate-500 mb-1">
+              Leave blank to use built-in offline ECAPA-TDNN neural voice recognition (no account needed).
+            </p>
+            <input id="hfTokenInput" type="password" placeholder="hf_..."
+              class="w-full px-3 py-1.5 text-xs rounded-lg bg-slate-950 border border-slate-800 text-slate-200" />
+          </div>
+        </details>
+
+        <!-- Start Button -->
+        <button id="startBtn" onclick="startTranscription()"
+          class="mt-5 w-full py-2.5 px-4 rounded-xl font-semibold text-sm text-white bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 shadow-lg shadow-sky-500/20 transition flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
+          <span>Start Transcription & Speaker Recognition</span>
+        </button>
+
+        <!-- Progress Status Box -->
+        <div id="progressBox" class="hidden mt-4 p-3.5 rounded-xl bg-slate-950 border border-slate-800">
+          <div class="flex items-center justify-between text-xs mb-1.5">
+            <span id="stageText" class="font-medium text-sky-400">Starting...</span>
+            <span id="progressPct" class="text-slate-400">0%</span>
+          </div>
+          <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+            <div id="progressBar" class="h-full bg-gradient-to-r from-sky-500 to-indigo-500 transition-all duration-300" style="width: 0%"></div>
+          </div>
+          <p class="text-[11px] text-slate-500 mt-1.5">
+            Note: First run downloads the WhisperX large-v3 model (~3 GB) once and caches it locally forever.
+          </p>
+        </div>
+      </div>
+
+      <!-- Video / Audio Preview Player Card -->
+      <div id="playerCard" class="hidden bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-xl">
+        <div class="flex items-center justify-between mb-2">
+          <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Interactive Media Player</h3>
+          <span class="text-[11px] text-slate-500">Click any transcript line to jump</span>
+        </div>
+        <video id="mediaPlayer" controls class="w-full rounded-lg bg-black max-h-64"></video>
+      </div>
+
+      <!-- Speaker Renaming Card -->
+      <div id="speakerManagerCard" class="hidden bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-xl">
+        <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2.5">Detected Voices (Click to Rename)</h3>
+        <div id="speakerRenameList" class="grid grid-cols-1 sm:grid-cols-2 gap-2"></div>
+      </div>
+
+    </div>
+
+    <!-- Right Column: Transcript Viewer & Export (7 cols) -->
+    <div class="lg:col-span-7 flex flex-col bg-slate-900 border border-slate-800 rounded-xl shadow-xl overflow-hidden min-h-[600px]">
+
+      <!-- Toolbar -->
+      <div class="p-4 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3 bg-slate-900/90">
+        <div>
+          <h2 class="text-sm font-semibold text-slate-200">Speaker-Labeled Transcript</h2>
+          <p id="statsSubtitle" class="text-xs text-slate-400">No transcript loaded yet</p>
+        </div>
+
+        <!-- Export Buttons -->
+        <div id="exportBtns" class="hidden flex flex-wrap items-center gap-1.5">
+          <button onclick="copyTranscript()" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-200 border border-slate-700 transition">
+            Copy Text
+          </button>
+          <button onclick="exportFile('txt')" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-medium text-sky-400 border border-slate-700 transition">
+            .TXT
+          </button>
+          <button onclick="exportFile('srt')" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-medium text-emerald-400 border border-slate-700 transition">
+            .SRT
+          </button>
+          <button onclick="exportFile('csv')" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-medium text-amber-400 border border-slate-700 transition">
+            .CSV
+          </button>
+          <button onclick="exportFile('json')" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-medium text-purple-400 border border-slate-700 transition">
+            .JSON
+          </button>
+        </div>
+      </div>
+
+      <!-- Search & Filter Bar -->
+      <div id="filterBar" class="hidden px-4 py-2.5 border-b border-slate-800 bg-slate-950/50 flex flex-wrap items-center gap-2">
+        <input id="searchInput" type="text" oninput="renderTranscript()" placeholder="Search words in transcript..."
+          class="flex-1 min-w-[180px] px-3 py-1.5 text-xs rounded-lg bg-slate-900 border border-slate-800 text-slate-200 focus:outline-none focus:border-sky-500" />
+        <select id="speakerFilterSelect" onchange="renderTranscript()"
+          class="px-3 py-1.5 text-xs rounded-lg bg-slate-900 border border-slate-800 text-slate-200 focus:outline-none focus:border-sky-500">
+          <option value="ALL">All Speakers</option>
+        </select>
+      </div>
+
+      <!-- Transcript Segments Container -->
+      <div id="transcriptContainer" class="flex-1 p-4 overflow-y-auto space-y-2.5 max-h-[72vh]">
+        <div class="h-full flex flex-col items-center justify-center text-center py-20 text-slate-500">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-12 h-12 mb-3 text-slate-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+          </svg>
+          <p class="text-sm font-medium text-slate-400">Ready to Transcribe & Recognize Voices</p>
+          <p class="text-xs text-slate-600 max-w-sm mt-1">
+            Drop a 10+ minute video on the left or paste its path. Every speaker will be automatically separated and timestamped.
+          </p>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <script>
+    let selectedFile = null;
+    let currentJob = null;
+    let pollTimer = null;
+    let speakerNames = {}; // Maps raw speaker ID -> custom name
+
+    const SPEAKER_COLORS = [
+      { bg: "bg-sky-500/15", text: "text-sky-400", border: "border-sky-500/30" },
+      { bg: "bg-emerald-500/15", text: "text-emerald-400", border: "border-emerald-500/30" },
+      { bg: "bg-amber-500/15", text: "text-amber-400", border: "border-amber-500/30" },
+      { bg: "bg-purple-500/15", text: "text-purple-400", border: "border-purple-500/30" },
+      { bg: "bg-rose-500/15", text: "text-rose-400", border: "border-rose-500/30" },
+      { bg: "bg-cyan-500/15", text: "text-cyan-400", border: "border-cyan-500/30" },
+      { bg: "bg-fuchsia-500/15", text: "text-fuchsia-400", border: "border-fuchsia-500/30" },
+      { bg: "bg-lime-500/15", text: "text-lime-400", border: "border-lime-500/30" },
+    ];
+
+    function getSpeakerStyle(rawSpeaker) {
+      const num = parseInt((rawSpeaker || "1").replace(/\D/g, ""), 10) || 1;
+      return SPEAKER_COLORS[(num - 1) % SPEAKER_COLORS.length];
+    }
+
+    function getDisplaySpeaker(rawSpeaker) {
+      return speakerNames[rawSpeaker] || rawSpeaker;
+    }
+
+    function formatTime(sec) {
+      const s = Math.max(0, Math.floor(sec || 0));
+      const hrs = Math.floor(s / 3600);
+      const mins = Math.floor((s % 3600) / 60);
+      const secs = s % 60;
+      if (hrs > 0) {
+        return `${String(hrs).padStart(2, "0")}:${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+      }
+      return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+    }
+
+    function formatSrtTime(sec) {
+      const totalMs = Math.max(0, Math.round((sec || 0) * 1000));
+      const hrs = Math.floor(totalMs / 3600000);
+      const mins = Math.floor((totalMs % 3600000) / 60000);
+      const secs = Math.floor((totalMs % 60000) / 1000);
+      const ms = totalMs % 1000;
+      return `${String(hrs).padStart(2, "0")}:${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")},${String(ms).padStart(3, "0")}`;
+    }
+
+    // Check GPU Status on load
+    async function loadSystemInfo() {
+      try {
+        const res = await fetch("/api/system");
+        const info = await res.json();
+        const badge = document.getElementById("gpuBadge");
+        if (info.cuda_available) {
+          badge.innerHTML = `
+            <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+            <span class="font-medium text-emerald-300">${info.gpu_name} (${info.vram_gb} GB VRAM)</span>
+            <span class="text-slate-400">• CUDA Accelerated</span>
+          `;
+        } else {
+          badge.innerHTML = `
+            <span class="w-2 h-2 rounded-full bg-amber-400"></span>
+            <span>CPU Mode</span>
+          `;
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    loadSystemInfo();
+
+    // Drag and Drop Handling
+    const dropZone = document.getElementById("dropZone");
+    const fileInput = document.getElementById("fileInput");
+
+    dropZone.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      dropZone.classList.add("dragover");
+    });
+    dropZone.addEventListener("dragleave", () => {
+      dropZone.classList.remove("dragover");
+    });
+    dropZone.addEventListener("drop", (e) => {
+      e.preventDefault();
+      dropZone.classList.remove("dragover");
+      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        selectedFile = e.dataTransfer.files[0];
+        document.getElementById("localPathInput").value = "";
+        updateSelectedFileUI();
+      }
+    });
+    fileInput.addEventListener("change", (e) => {
+      if (e.target.files && e.target.files.length > 0) {
+        selectedFile = e.target.files[0];
+        document.getElementById("localPathInput").value = "";
+        updateSelectedFileUI();
+      }
+    });
+
+    function updateSelectedFileUI() {
+      if (!selectedFile) return;
+      const mb = (selectedFile.size / (1024 * 1024)).toFixed(1);
+      document.getElementById("selectedFileLabel").innerHTML = `
+        <span class="text-sky-400 font-semibold">${selectedFile.name}</span>
+        <span class="text-slate-400 text-xs ml-1">(${mb} MB)</span>
+      `;
+    }
+
+    async function startTranscription() {
+      const localPath = document.getElementById("localPathInput").value.trim();
+      if (!selectedFile && !localPath) {
+        alert("Please drop a video/audio file or paste a local file path first.");
+        return;
+      }
+
+      const startBtn = document.getElementById("startBtn");
+      const progressBox = document.getElementById("progressBox");
+      startBtn.disabled = true;
+      progressBox.classList.remove("hidden");
+      document.getElementById("stageText").textContent = "Uploading / Preparing media...";
+      document.getElementById("progressPct").textContent = "5%";
+      document.getElementById("progressBar").style.width = "5%";
+
+      const formData = new FormData();
+      if (localPath) {
+        formData.append("local_path", localPath);
+      } else if (selectedFile) {
+        formData.append("file", selectedFile);
+      }
+      formData.append("model_name", document.getElementById("modelSelect").value);
+      formData.append("language", document.getElementById("languageSelect").value);
+      formData.append("num_speakers", document.getElementById("numSpeakersSelect").value);
+      formData.append("max_speakers", document.getElementById("maxSpeakersInput").value || "8");
+      formData.append("hf_token", document.getElementById("hfTokenInput").value.trim());
+
+      try {
+        const res = await fetch("/api/transcribe", {
+          method: "POST",
+          body: formData,
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.detail || "Failed to start transcription");
+        }
+        pollJob(data.job_id);
+      } catch (err) {
+        alert("Error: " + err.message);
+        startBtn.disabled = false;
+        progressBox.classList.add("hidden");
+      }
+    }
+
+    function pollJob(jobId) {
+      if (pollTimer) clearInterval(pollTimer);
+      pollTimer = setInterval(async () => {
+        try {
+          const res = await fetch(`/api/job/${jobId}`);
+          const job = await res.json();
+
+          document.getElementById("stageText").textContent = job.stage || "Processing...";
+          document.getElementById("progressPct").textContent = `${job.progress || 0}%`;
+          document.getElementById("progressBar").style.width = `${job.progress || 0}%`;
+
+          if (job.status === "completed") {
+            clearInterval(pollTimer);
+            document.getElementById("startBtn").disabled = false;
+            onJobCompleted(job);
+          } else if (job.status === "error") {
+            clearInterval(pollTimer);
+            document.getElementById("startBtn").disabled = false;
+            document.getElementById("stageText").textContent = job.stage || "Error occurred";
+            alert("Transcription error:\n" + (job.error || job.stage));
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      }, 1000);
+    }
+
+    function onJobCompleted(job) {
+      currentJob = job;
+      speakerNames = {};
+      (job.speakers || []).forEach((s) => {
+        speakerNames[s] = s;
+      });
+
+      // Setup media player
+      const playerCard = document.getElementById("playerCard");
+      const mediaPlayer = document.getElementById("mediaPlayer");
+      playerCard.classList.remove("hidden");
+      mediaPlayer.src = job.media_url;
+
+      // Setup speaker rename inputs & filter dropdown
+      renderSpeakerManager();
+      updateSpeakerFilterDropdown();
+
+      // Show export & filter bars
+      document.getElementById("exportBtns").classList.remove("hidden");
+      document.getElementById("filterBar").classList.remove("hidden");
+
+      const mins = ((job.duration_sec || 0) / 60).toFixed(1);
+      document.getElementById("statsSubtitle").textContent =
+        `${job.filename} • ${mins} min video processed in ${job.elapsed_sec}s • ${(job.speakers || []).length} Speaker(s) • ${job. segments.length} segments`;
+
+      renderTranscript();
+    }
+
+    function renderSpeakerManager() {
+      const card = document.getElementById("speakerManagerCard");
+      const list = document.getElementById("speakerRenameList");
+      if (!currentJob || !currentJob.speakers || currentJob.speakers.length === 0) {
+        card.classList.add("hidden");
+        return;
+      }
+      card.classList.remove("hidden");
+      list.innerHTML = "";
+
+      currentJob.speakers.forEach((rawSpk) => {
+        const style = getSpeakerStyle(rawSpk);
+        const div = document.createElement("div");
+        div.className = "flex items-center gap-2 bg-slate-950 p-2 rounded-lg border border-slate-800";
+        div.innerHTML = `
+          <span class="text-xs font-semibold px-2 py-1 rounded ${style.bg} ${style.text} border ${style.border} shrink-0">
+            ${rawSpk}
+          </span>
+          <input type="text" value="${speakerNames[rawSpk] || rawSpk}"
+            oninput="renameSpeaker('${rawSpk}', this.value)"
+            class="w-full bg-transparent text-xs text-slate-200 focus:outline-none border-b border-transparent focus:border-sky-500 px-1 py-0.5"
+            placeholder="Rename speaker..." />
+        `;
+        list.appendChild(div);
+      });
+    }
+
+    function renameSpeaker(rawSpk, newName) {
+      speakerNames[rawSpk] = newName.trim() || rawSpk;
+      updateSpeakerFilterDropdown();
+      renderTranscript();
+    }
+
+    function updateSpeakerFilterDropdown() {
+      const sel = document.getElementById("speakerFilterSelect");
+      const currentVal = sel.value;
+      sel.innerHTML = `<option value="ALL">All Speakers</option>`;
+      if (!currentJob) return;
+      (currentJob.speakers || []).forEach((rawSpk) => {
+        const opt = document.createElement("option");
+        opt.value = rawSpk;
+        opt.textContent = getDisplaySpeaker(rawSpk);
+        sel.appendChild(opt);
+      });
+      sel.value = currentVal;
+    }
+
+    function renderTranscript() {
+      if (!currentJob) return;
+      const container = document.getElementById("transcriptContainer");
+      const query = (document.getElementById("searchInput").value || "").toLowerCase().trim();
+      const spkFilter = document.getElementById("speakerFilterSelect").value;
+
+      container.innerHTML = "";
+
+      const filtered = (currentJob.segments || []).filter((seg) => {
+        if (spkFilter !== "ALL" && seg.speaker !== spkFilter) return false;
+        if (query && !seg.text.toLowerCase().includes(query) && !getDisplaySpeaker(seg.speaker).toLowerCase().includes(query)) {
+          return false;
+        }
+        return true;
+      });
+
+      if (filtered.length === 0) {
+        container.innerHTML = `<p class="text-center text-xs text-slate-500 py-12">No matching transcript segments found.</p>`;
+        return;
+      }
+
+      filtered.forEach((seg, idx) => {
+        const style = getSpeakerStyle(seg.speaker);
+        const dispName = getDisplaySpeaker(seg.speaker);
+        const card = document.createElement("div");
+        card.className = "segment-card p-3.5 rounded-xl bg-slate-950/70 hover:bg-slate-950 border border-slate-800/90 cursor-pointer";
+        card.dataset.start = seg.start;
+        card.dataset.end = seg.end;
+        card.onclick = () => seekMedia(seg.start);
+
+        card.innerHTML = `
+          <div class="flex items-center justify-between gap-2 mb-1.5">
+            <span class="text-xs font-semibold px-2.5 py-0.5 rounded-md ${style.bg} ${style.text} border ${style.border}">
+              ${dispName}
+            </span>
+            <span class="text-xs font-mono text-slate-400 hover:text-sky-400">
+              ${formatTime(seg.start)} → ${formatTime(seg.end)}
+            </span>
+          </div>
+          <p class="text-sm text-slate-200 leading-relaxed select-text">${seg.text}</p>
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    function seekMedia(seconds) {
+      const player = document.getElementById("mediaPlayer");
+      if (!player || !player.src) return;
+      player.currentTime = seconds;
+      player.play().catch(() => {});
+    }
+
+    // Highlight active transcript segment during video playback
+    document.getElementById("mediaPlayer").addEventListener("timeupdate", (e) => {
+      const t = e.target.currentTime;
+      const cards = document.querySelectorAll(".segment-card");
+      cards.forEach((card) => {
+        const s = parseFloat(card.dataset.start);
+        const end = parseFloat(card.dataset.end);
+        if (t >= s && t <= end) {
+          card.classList.add("active");
+        } else {
+          card.classList.remove("active");
+        }
+      });
+    });
+
+    function buildExportContent(format) {
+      if (!currentJob || !currentJob.segments) return "";
+      const segs = currentJob.segments;
+
+      if (format === "txt") {
+        return segs
+          .map((s) => `[${formatTime(s.start)} - ${formatTime(s.end)}] ${getDisplaySpeaker(s.speaker)}:\n${s.text}\n`)
+          .join("\n");
+      }
+
+      if (format === "srt") {
+        return segs
+          .map((s, idx) => `${idx + 1}\n${formatSrtTime(s.start)} --> ${formatSrtTime(s.end)}\n[${getDisplaySpeaker(s.speaker)}] ${s.text}\n`)
+          .join("\n");
+      }
+
+      if (format === "csv") {
+        const header = "Start,End,Start_Formatted,End_Formatted,Speaker,Text\n";
+        const rows = segs.map((s) => {
+          const spk = `"${getDisplaySpeaker(s.speaker).replace(/"/g, '""')}"`;
+          const txt = `"${(s.text || "").replace(/"/g, '""')}"`;
+          return `${s.start},${s.end},${formatTime(s.start)},${formatTime(s.end)},${spk},${txt}`;
+        });
+        return header + rows.join("\n");
+      }
+
+      if (format === "json") {
+        const exported = segs.map((s) => ({
+          ...s,
+          speaker_Name: getDisplaySpeaker(s.speaker),
+        }));
+        return JSON.stringify(exported, null, 2);
+      }
+      return "";
+    }
+
+    function exportFile(format) {
+      if (!currentJob) return;
+      const content = buildExportContent(format);
+      const mimeMap = {
+        txt: "text/plain;charset=utf-8",
+        srt: "text/plain;charset=utf-8",
+        csv: "text/csv;charset=utf-8",
+        json: "application/json;charset=utf-8",
+      };
+      const blob = new Blob([content], { type: mimeMap[format] || "text/plain" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const baseName = (currentJob.filename || "transcript").replace(/\.[^/.]+$/, "");
+      a.href = url;
+      a.download = `${baseName}_transcript.${format}`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    async function copyTranscript() {
+      const content = buildExportContent("txt");
+      await navigator.clipboard.writeText(content);
+      alert("Transcript copied to clipboard!");
+    }
+  </script>
+</body>
+</html>
+

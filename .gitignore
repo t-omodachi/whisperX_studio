@@ -1,0 +1,14 @@
+# Private research media and transcripts - never commit
+uploads/
+outputs/
+
+# Downloaded models (several GB)
+models/
+
+# Python environment
+.venv/
+__pycache__/
+*.pyc
+
+# Local tool config
+.claude/
